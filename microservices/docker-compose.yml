@@ -1,0 +1,110 @@
+version: "1.0"
+
+services:
+    api-gateway:
+        restart: always
+        image: micro-nginx/gateway
+        container_name: micro-gateway
+        build:
+            context: ./gateway_nginx
+        ports:
+            - 80:80
+        depends_on:
+            - product
+            - auth
+            - analytic
+            - shipping
+
+    shipping:
+        build:
+            context: ./service_shipping
+            dockerfile: Dockerfile
+        ports:
+            - 8000:8000
+        environment:
+            - MONGO_HOST=micro-mongo
+            - MONGO_PORT=27017
+            - MONGO_DB=product
+            - API_KEY=9e2b1801e098e60177d5a5076eff8a89
+        depends_on:
+            - mongo
+
+    product:
+        restart: always
+        image: micro-express/product
+        container_name: micro-product
+        build:
+            context: ./service_products
+        environment:
+            NODE_ENV: production
+            JWT_SECRET: ourSignKeyIsImportant
+            MONGO_URL: mongodb://root:example@micro-mongo:27017/product?authSource=admin
+        depends_on:
+            - mongo
+
+    auth:
+        restart: always
+        image: micro-php/auth
+        container_name: micro-auth
+        build:
+            context: ./service_authentication
+        environment:
+            JWT_SECRET: ourSignKeyIsImportant
+        depends_on:
+            - mysql
+
+    analytic:
+        restart: always
+        image: micro-python/analytic
+        container_name: micro-analytic
+        environment:
+            PRODUCT_API_HOST: micro-product
+            PRODUCT_API_PORT: 3000
+        build:
+            context: ./service_analytic
+
+    ui:
+        restart: always
+        image: micro-nextjs/ui
+        container_name: micro-ui
+        build:
+            context: ./ui_api_consumer
+        depends_on:
+            - api-gateway
+
+    mongo:
+        image: mongo
+        container_name: micro-mongo
+        volumes:
+            - ./data/mongo:/data/db
+        environment:
+            MONGO_INITDB_ROOT_USERNAME: root
+            MONGO_INITDB_ROOT_PASSWORD: example
+            MONGO_INITDB_DATABASE: product
+
+    mongo-express:
+        restart: always
+        container_name: micro-mexpress
+        image: mongo-express
+        ports:
+            - 8081:8081
+        depends_on:
+            - mongo
+        environment:
+            - ME_CONFIG_MONGODB_SERVER=micro-mongo
+            - ME_CONFIG_MONGODB_ADMINUSERNAME=root
+            - ME_CONFIG_MONGODB_ADMINPASSWORD=example
+            - ME_CONFIG_BASICAUTH_USERNAME=admin
+            - ME_CONFIG_BASICAUTH_PASSWORD=password
+
+    mysql:
+        image: mysql:8
+        container_name: micro-mysql
+        command: '--default-authentication-plugin=mysql_native_password'
+        volumes:
+            - ./data/mysql:/var/lib/mysql
+        environment:
+            MYSQL_DATABASE: auth
+            MYSQL_USER: test
+            MYSQL_PASSWORD: example
+            MYSQL_ROOT_PASSWORD: password
